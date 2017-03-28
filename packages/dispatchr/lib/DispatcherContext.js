@@ -44,6 +44,7 @@ DispatcherContext.prototype.getStore = function getStore(name) {
             };
             return this.dispatcher._throwOrCallErrorHandler(message, 'STORE_UNREGISTERED', this.context, meta);
         }
+        console.log('getStore with instance not created', storeName, this.rehydratedStoreState[storeName], this.rehydratedStoreState);
         this.storeInstances[storeName] = new (this.dispatcher.stores[storeName])(this.dispatcherInterface);
         if (this.rehydratedStoreState && this.rehydratedStoreState[storeName]) {
             var state = this.rehydratedStoreState[storeName];
@@ -52,7 +53,17 @@ DispatcherContext.prototype.getStore = function getStore(name) {
             }
             this.rehydratedStoreState[storeName] = null;
         }
+    } else {
+        console.log('getStore with instance created', storeName, this.rehydratedStoreState[storeName]);
+        if (this.rehydratedStoreState && this.rehydratedStoreState[storeName]) {
+            var state = this.rehydratedStoreState[storeName];
+            if (this.storeInstances[storeName].rehydrate) {
+                this.storeInstances[storeName].rehydrate(state);
+            }
+            this.rehydratedStoreState[storeName] = null;
+        }
     }
+
     return this.storeInstances[storeName];
 };
 
@@ -103,7 +114,7 @@ DispatcherContext.prototype.dispatch = function dispatch(actionName, payload) {
                     var meta = {
                         store: store
                     };
-                    return self.dispatcher._throwOrCallErrorHandler(message, 'DISPATCH_INVALID_STORE_METHOD', self.context, meta);
+                    return this.dispatcher._throwOrCallErrorHandler(message, 'DISPATCH_INVALID_STORE_METHOD', this.context, meta);
                 }
                 handlerFns[store.name] = storeInstance[store.handler].bind(storeInstance);
             }
@@ -124,15 +135,20 @@ DispatcherContext.prototype.dispatch = function dispatch(actionName, payload) {
  * @method dehydrate
  * @returns {Object} dehydrated dispatcher data
  */
-DispatcherContext.prototype.dehydrate = function dehydrate() {
+DispatcherContext.prototype.dehydrate = function dehydrate(meta, filter) {
     var self = this,
         stores = {};
     Object.keys(self.storeInstances).forEach(function storeInstancesEach(storeName) {
         var store = self.storeInstances[storeName];
-        if (!store.dehydrate || (store.shouldDehydrate && !store.shouldDehydrate())) {
+        if (!store.dehydrate || (store.shouldDehydrate && !store.shouldDehydrate()) || (filter && !filter(storeName))) {
             return;
         }
-        stores[storeName] = store.dehydrate();
+        stores[storeName] = store.dehydrate(meta);
+        // hack here, should let store to provide the information
+        if (storeName !== 'ComponentConfigStore' && storeName !== 'LangStore') {
+            // should have a API with BaseStore to clear the flag
+            store._hasChange = false;
+        }
     });
     return {
         stores: stores
@@ -149,9 +165,16 @@ DispatcherContext.prototype.rehydrate = function rehydrate(dispatcherState) {
     var self = this;
     if (dispatcherState.stores) {
         Object.keys(dispatcherState.stores).forEach(function storeStateEach(storeName) {
+            // if self.rehydratedStoreState is there but it's not rehydrated, then do a getStore to create the store
+            // then this rehydrate will be just updating the store
+            if (self.rehydratedStoreState[storeName]) {
+                self.getStore(storeName);
+            }
+            console.log('rehydrating', storeName, dispatcherState.stores[storeName]);
             self.rehydratedStoreState[storeName] = dispatcherState.stores[storeName];
         });
     }
+    console.log('finishing DispatcherContext.prototype.rehydrate', self.rehydratedStoreState);
 };
 
 /**

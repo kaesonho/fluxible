@@ -67,8 +67,6 @@ FluxContext.prototype.getStore = function getStore(store) {
  *  dynamically modifying the action context
  * @param {Function} [plugin.plugComponentContext] Method called after component context is created to
  *  allow dynamically modifying the component context
- * @param {Function} [plugin.plugExecuteAction] Method called before executeAction is called to allow
- *  dynamically modifying the context and payload of an action call
  * @param {Function} [plugin.plugStoreContext] Method called after store context is created to allow
  *  dynamically modifying the store context
  * @param {Object} [plugin.dehydrate] Method called to serialize the plugin settings to be persisted
@@ -241,7 +239,6 @@ FluxContext.prototype.getComponentContext = function getComponentContext() {
     if (!self._dispatcher) {
         self._initializeDispatcher();
     }
-
     var componentContext = {
         getStore: this._dispatcher.getStore.bind(this._dispatcher),
         // Prevents components from directly handling the callback for an action
@@ -306,18 +303,25 @@ FluxContext.prototype.getStoreContext = function getStoreContext() {
  * Returns a serializable context state
  * @method dehydrate
  * @return {Object} See rehydrate method for properties
+ * @return {Object} meta dehydrate meta 
  */
-FluxContext.prototype.dehydrate = function dehydrate() {
+FluxContext.prototype.dehydrate = function dehydrate(meta, filter) {
     var self = this;
     var state = {
-        dispatcher: (this._dispatcher && this._dispatcher.dehydrate()) || {},
+        dispatcher: (this._dispatcher && this._dispatcher.dehydrate(meta, filter)) || {},
         plugins: {}
     };
 
     self._plugins.forEach(function pluginsEach(plugin) {
         if ('function' === typeof plugin.dehydrate) {
             // Use a namespace for storing plugin state and provide access to the application
-            state.plugins[plugin.name] = plugin.dehydrate(self);
+            
+            // We don't have a _hasChange flag for plugin, for now just check return value to decide if we want to dehydreate it
+            // Which means if plugin don't want to dehydrate anything, can just return null
+            var pluginState = plugin.dehydrate(self, meta);
+            if (pluginState) {
+                state.plugins[plugin.name] = pluginState;
+            }   
         }
     });
 
@@ -362,7 +366,9 @@ FluxContext.prototype.rehydrate = function rehydrate(obj) {
     });
 
     return Promise.all(pluginTasks).then(function rehydratePluginTasks() {
-        self._dispatcher = self._app.createDispatcherInstance(self.getStoreContext());
+        if (!self._dispatcher) {
+            self._dispatcher = self._app.createDispatcherInstance(self.getStoreContext());
+        }
         self._dispatcher.rehydrate(obj.dispatcher || {});
         return self;
     });

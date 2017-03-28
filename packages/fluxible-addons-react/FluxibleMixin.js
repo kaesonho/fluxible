@@ -79,14 +79,12 @@ var FluxibleMixin = {
      */
     getStore: function (store) {
         var storeInstance = store;
-        if ('object' !== typeof storeInstance) {
-            var context = this.props.context || this.context;
-            if (!context) {
-                throw new Error('storeListener mixin was called but no context was provided for getting the store.' +
-                'Pass the fluxible context via a `context` prop or via React\'s context.');
-            }
-            storeInstance = context.getStore(store);
+        var context = this.props.context || this.context;
+        if (!context) {
+            throw new Error('storeListener mixin was called but no context was provided for getting the store.' +
+            'Pass the fluxible context via a `context` prop or via React\'s context.');
         }
+        storeInstance = context.getStore(store);
         return storeInstance;
     },
 
